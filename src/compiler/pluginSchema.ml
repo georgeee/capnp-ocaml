@@ -1358,7 +1358,9 @@ module MakeRPC(MessageWrapper : Capnp.RPC.S) = struct
 
   let invalid_msg = Capnp.Message.invalid_msg
 
-  include Capnp.Runtime.BuilderInc.Make[@inlined](MessageWrapper)
+  module BI = Capnp.Runtime.BuilderInc.Make_[@inlined](MessageWrapper)(Capnp.Runtime.ReaderInc.No_throw)
+  module RA_ = BI.RA_
+  module BA_ = BI.BA_
 
   type 'cap message_t = 'cap MessageWrapper.Message.t
 

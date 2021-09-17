@@ -36,9 +36,23 @@ module Uint64 = Stdint.Uint64
 
 let sizeof_uint64 = 8
 
+exception CapnpReadingFailed of string
+
 open Message
 
-module Make (MessageWrapper : RPC.S) = struct
+module type NoThrow = sig
+  val no_throw : bool
+end
+
+module Throw = struct
+  let no_throw = false
+end
+
+module No_throw = struct
+  let no_throw = true
+end
+
+module Make_ (MessageWrapper : RPC.S) (NT : NoThrow) = struct
   module RC = CommonInc.Make[@inlined](MessageWrapper)
   include RC
 
@@ -179,6 +193,9 @@ module Make (MessageWrapper : RPC.S) = struct
   (*******************************************************************************
    * METHODS FOR GETTING OBJECTS STORED BY VALUE
    *******************************************************************************)
+  let mk_def def name =
+    if NT.no_throw then def
+    else raise (CapnpReadingFailed name)
 
   let get_bit
       ~(default : bool)
@@ -197,9 +214,9 @@ module Make (MessageWrapper : RPC.S) = struct
           else
             is_set
         else
-          default
+          mk_def default "get_bit"
     | None ->
-        default
+        mk_def default "get_bit"
 
   let get_int8
       ~(default : int)
@@ -213,9 +230,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_int8 data byte_ofs in
           numeric lxor default
         else
-          default
+          mk_def default "get_int8"
     | None ->
-        default
+        mk_def default "get_int8"
 
   let get_int16
       ~(default : int)
@@ -229,9 +246,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_int16 data byte_ofs in
           numeric lxor default
         else
-          default
+          mk_def default "get_int16"
     | None ->
-        default
+        mk_def default "get_int16"
 
   let get_int32
       ~(default : int32)
@@ -245,9 +262,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_int32 data byte_ofs in
           Int32.logxor numeric default
         else
-          default
+          mk_def default "get_int32"
     | None ->
-        default
+        mk_def default "get_int32"
 
   let get_int64
       ~(default : int64)
@@ -261,9 +278,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_int64 data byte_ofs in
           Int64.logxor numeric default
         else
-          default
+          mk_def default "get_int64"
     | None ->
-        default
+        mk_def default "get_int64"
 
   let get_uint8
       ~(default : int)
@@ -277,9 +294,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_uint8 data byte_ofs in
           numeric lxor default
         else
-          default
+          mk_def default "get_uint8"
     | None ->
-        default
+        mk_def default "get_uint8"
 
   let get_uint16
       ~(default : int)
@@ -293,9 +310,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_uint16 data byte_ofs in
           numeric lxor default
         else
-          default
+          mk_def default "get_uint16"
     | None ->
-        default
+        mk_def default "get_uint16"
 
   let get_uint32
       ~(default : Uint32.t)
@@ -309,9 +326,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_uint32 data byte_ofs in
           Uint32.logxor numeric default
         else
-          default
+          mk_def default "get_uint32"
     | None ->
-        default
+        mk_def default "get_uint32"
 
   let get_uint64
       ~(default : Uint64.t)
@@ -325,9 +342,9 @@ module Make (MessageWrapper : RPC.S) = struct
           let numeric = Slice.get_uint64 data byte_ofs in
           Uint64.logxor numeric default
         else
-          default
+          mk_def default "get_uint64"
     | None ->
-        default
+        mk_def default "get_uint64"
 
   let get_float32
       ~(default_bits : int32)
@@ -341,9 +358,9 @@ module Make (MessageWrapper : RPC.S) = struct
           if byte_ofs + 3 < data.Slice.len then
             Slice.get_int32 data byte_ofs
           else
-            Int32.zero
+            mk_def Int32.zero "get_float32"
       | None ->
-          Int32.zero
+          mk_def Int32.zero "get_float32"
     in
     let bits = Int32.logxor numeric default_bits in
     Int32.float_of_bits bits
@@ -360,9 +377,9 @@ module Make (MessageWrapper : RPC.S) = struct
           if byte_ofs + 7 < data.Slice.len then
             Slice.get_int64 data byte_ofs
           else
-            Int64.zero
+            mk_def Int64.zero "get_float64"
       | None ->
-          Int64.zero
+          mk_def Int64.zero "get_float64"
     in
     let bits = Int64.logxor numeric default_bits in
     Int64.float_of_bits bits
@@ -408,12 +425,9 @@ module Make (MessageWrapper : RPC.S) = struct
           match deref_list_pointer pointer_bytes with
           | Some list_storage ->
               string_of_uint8_list ~null_terminated:true list_storage
-          | None ->
-              default
-        else
-          default
-    | None ->
-        default
+          | None -> mk_def default "get_text"
+        else mk_def default "get_text"
+    | None -> mk_def default "get_text"
 
   let get_blob
       ~(default : string)
@@ -435,11 +449,11 @@ module Make (MessageWrapper : RPC.S) = struct
           | Some list_storage ->
               string_of_uint8_list ~null_terminated:false list_storage
           | None ->
-              default
+            mk_def default "get_blob"
         else
-          default
+          mk_def default "get_blob"
     | None ->
-        default
+        mk_def default "get_blob"
 
   let get_list
       ?(default : ro ListStorage.t option)
@@ -448,7 +462,9 @@ module Make (MessageWrapper : RPC.S) = struct
       (pointer_word : int)
     : (ro, 'a, 'cap ListStorage.t) InnerArray.t =
     let make_default default' decoders' =
-      begin match default' with
+      if NT.no_throw then
+      begin
+      match default' with
       | Some default_storage ->
           make_array_readonly default_storage decoders'
       | None ->
@@ -459,6 +475,7 @@ module Make (MessageWrapper : RPC.S) = struct
             InnerArray.get_unsafe = InnerArray.invalid_get_unsafe;
             InnerArray.set_unsafe = InnerArray.invalid_set_unsafe; }
       end
+      else raise (CapnpReadingFailed "get_list")
     in
     match struct_storage_opt with
     | Some struct_storage ->
@@ -691,3 +708,4 @@ module Make (MessageWrapper : RPC.S) = struct
     | Some s -> Some (StructStorage.cast s)
 
 end [@@inline]
+module Make (NM : RPC.S) = Make_[@inlined](NM)(Throw)

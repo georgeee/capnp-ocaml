@@ -44,9 +44,9 @@ let invalid_msg = Message.invalid_msg
 let sizeof_uint64 = 8
 
 (* Functor parameter: NM == "native message" *)
-module Make (NM : RPC.S) = struct
+module Make_ (NM : RPC.S) (NT : ReaderInc.NoThrow) = struct
   module RA_ = struct
-    include ReaderInc.Make[@inlined](NM)
+    include ReaderInc.Make_[@inlined](NM)(NT)
   end
 
   module BA_ = struct
@@ -1391,3 +1391,5 @@ module Make (NM : RPC.S) = struct
     let cast_struct = NM.StructStorage.cast
   end
 end
+
+module Make (NM : RPC.S) = Make_[@inlined](NM)(ReaderInc.Throw)
